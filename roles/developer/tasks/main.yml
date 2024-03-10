@@ -1,0 +1,171 @@
+---
+- name: Установка Angular
+  become: true
+  tags: "angular"
+  block:
+    - name: Установка NodeJS и Npm
+      ansible.builtin.apt:
+        name:
+          - nodejs
+          - npm
+        state: present
+
+    - name: Обновление npm до последней версии
+      community.general.npm:
+        name: npm
+        state: latest
+        global: true
+
+    - name: Установка Angular CLI
+      community.general.npm:
+        name: '@angular/cli'
+        state: present
+        global: true
+
+- name: Установка PostgreSQL и Redis
+  become: true
+  tags: "sql-nosql"
+  block:
+    - name: Удаление дублирующих строк из файлов источников пакетов
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list
+        state: absent
+        regexp: "^deb http://deb.debian.org/debian/ bookworm main$"
+
+    - name: Удаление дубликатов строки из файла docker.list
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list.d/docker.list
+        state: absent
+        regexp: '^deb [arch=amd64 signed-by=/etc/apt/keyrings/docker\.asc] https://download.docker.com/linux/debian bookworm stable$'
+
+    - name: Обновление списка пакетов APT после удаления дубликатов
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Добавление репозитория PostgreSQL
+      ansible.builtin.copy:
+        content: "deb https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+        dest: /etc/apt/sources.list.d/pgdg.list
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Установка ключа GPG PostgreSQL
+      ansible.builtin.apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+
+    - name: Обновление списка пакетов APT после добавления ключа GPG
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Установка PostgreSQL
+      ansible.builtin.apt:
+        name: postgresql
+        state: present
+
+    - name: Установка Redis
+      ansible.builtin.apt:
+        name: redis-server
+        state: present
+
+    - name: Замена значения директивы supervised на systemd в redis.conf
+      ansible.builtin.replace:
+        path: /etc/redis/redis.conf
+        regexp: '^#?\s*supervised .*'
+        replace: 'supervised systemd'
+        backup: true
+
+    - name: Настройка параметра maxmemory в redis.conf
+      ansible.builtin.replace:
+        path: /etc/redis/redis.conf
+        regexp: '^#?\s*maxmemory .*'
+        replace: 'maxmemory 300mb'
+        backup: true
+
+    - name: Перезапуск службы Redis после изменения параметров
+      ansible.builtin.systemd:
+        name: redis
+        state: restarted
+
+    - name: Включение автозапуска службы Redis
+      ansible.builtin.systemd:
+        name: redis
+        enabled: true
+
+- name: Создание VENV и установка PIP пакетов.
+  become: true
+  tags: "pip"
+  block:
+    - name: Создание VENV
+      ansible.builtin.command:
+        cmd: python3 -m venv {{ developer_venv_django_path }}
+      args:
+        creates: "{{ developer_venv_django_path }}/bin/activate"
+
+    - name: Активация виртуального окружения (Django)
+      ansible.builtin.stat:
+        path: "{{ developer_venv_django_path }}/bin/activate"
+      register: venv_active
+      check_mode: false
+
+    - name: Установить Python пакеты в виртуальное окружение (Django)
+      ansible.builtin.command: "{{ developer_venv_django_path }}/bin/python -m pip install {{ python_packages | join(' ') }}"
+      vars:
+        python_packages: "{{ developer_python_packages_django }}"
+      args:
+        executable: /bin/bash
+        creates: "{{ developer_venv_django_path }}/bin/activate"
+      when: venv_active.stat.exists and not ansible_check_mode
+
+- name: Установка VSCode
+  become: true
+  tags: "vscode"
+  block:
+    - name: Удаление старого ключа GPG для Microsoft Visual Studio Code
+      ansible.builtin.apt_key:
+        id: BC528686B50D79E339D3721CEB3E94ADBE1229CF
+        state: absent
+
+    - name: Получение нового ключа GPG для Microsoft Visual Studio Code
+      ansible.builtin.get_url:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        dest: /tmp/packages.microsoft.gpg
+      args:
+        dest: /tmp/packages.microsoft.gpg
+        mode: '0644'
+
+    - name: Загрузка файла ключа GPG с удаленного сервера
+      ansible.builtin.fetch:
+        src: "/tmp/packages.microsoft.gpg"
+        dest: "/tmp/packages.microsoft.gpg"
+
+    - name: Установка нового ключа GPG в /etc/apt/trusted.gpg.d/
+      ansible.builtin.copy:
+        src: "/tmp/packages.microsoft.gpg"
+        dest: "/etc/apt/trusted.gpg.d/microsoft.gpg"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Удаление временного файла packages.microsoft.gpg
+      ansible.builtin.file:
+        path: "/tmp/packages.microsoft.gpg"
+        state: absent
+
+    - name: Добавление репозитория Microsoft Visual Studio Code
+      ansible.builtin.lineinfile:
+        path: "/etc/apt/sources.list.d/vscode.list"
+        line: "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/trusted.gpg.d/microsoft.gpg] https://packages.microsoft.com/repos/code stable main"
+        create: true
+        mode: '0644'
+
+    - name: Обновление списка пакетов APT
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Установка Visual Studio Code
+      ansible.builtin.apt:
+        name: code
+        state: present

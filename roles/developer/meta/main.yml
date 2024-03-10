@@ -1,0 +1,10 @@
+galaxy_info:
+  role_name: developer
+  description: Настройка серверов для работы с Full-stack
+  author: Magomedov Magomed
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: Debian
+      versions:
+        - all

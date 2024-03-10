@@ -1,0 +1,30 @@
+---
+- name: Deploy server
+  hosts: deploy
+  vars:
+    ansible_python_interpreter: /etc/docker/docker-venv/bin/python
+  roles:
+    - role: preconfig
+      tags: preconfig
+
+- name: Manager
+  hosts: managers
+  vars:
+    ansible_python_interpreter: /etc/docker/docker-venv/bin/python
+  roles:
+    - role: preconfig
+      tags: preconfig
+
+- name: Worker
+  hosts: workers
+  vars:
+    ansible_python_interpreter: /etc/docker/docker-venv/bin/python
+  roles:
+    - role: preconfig
+      tags: preconfig
+
+- name: Developer
+  hosts: full_stack
+  roles:
+    - role: developer
+      tags: developer

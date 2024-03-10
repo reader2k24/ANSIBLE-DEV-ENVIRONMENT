@@ -1,0 +1,8 @@
+developer_python_packages_django:
+  - setuptools
+  - requests
+  - docker
+  - django
+  - flask
+
+developer_venv_django_path: /opt/venv_django
